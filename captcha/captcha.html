@@ -44,11 +44,11 @@
       // Game setup
       const canvas = document.getElementById('gameCanvas');
       const ctx = canvas.getContext('2d');
-      const orbitCounter = document.getElementById('orbit-counter');
       
       // Game state
       const state = {
         body: { x: 195, y: 150, radius: 24, mass: 1000, color: '#FF0' },
+        extraBody: { x: -100, y: -100, velX: 0, velY: 0, radius: 16, mass: 500, color: '#AA0' },
         ship: {
           x: 0, y: 0, 
           width: 15, height: 10,
@@ -63,15 +63,19 @@
         },
         particles: [],
         target: { x: 0, y: 0 },
+        gameInitialized: false,
         exploding: false,
         thrusting: false,
         thrustPower: 0.05,
         gravity: 0.2,
+        requiredOrbits: 3,
+        difficulty: 3, // valid values: 1 to 3. anything over 3 just adds to required # orbits.
         successDelay: 60
       };
 
       // Initialize ship position
       function resetShip() {
+        state.gameInitialized = false;
         const angle = Math.random() * Math.PI * 2;
         const distance = 100 + Math.random() * 50;
         state.ship.x = state.body.x + Math.cos(angle) * distance;
@@ -85,7 +89,7 @@
 
       // Check if ship completed orbits
       function checkOrbits() {
-        if (state.ship.orbits >= 3 && state.successDelay <= 0) {
+        if (state.ship.orbits >= state.requiredOrbits && state.successDelay <= 0) {
           captchaSuccess();
         }
       }
@@ -140,17 +144,65 @@
       function update() {
         if (state.exploding) return;
         
+        if (!state.gameInitialized)
+        {
+          if (state.difficulty <= 1)
+          {
+            state.body.mass = 900 + Math.random()*200;
+            state.body.radius = state.body.mass/42;
+          }
+          else if (state.difficulty == 2)
+          {
+            state.body.mass = 600 + Math.random()*1000;
+            state.body.radius = state.body.mass/42;
+          }
+          else if (state.difficulty == 3)
+          {
+            state.body.mass = 600 + Math.random()*1000;
+            state.body.radius = state.body.mass/42;
+
+            state.extraBody.mass = 300 + Math.random()*500;
+            state.extraBody.radius = state.extraBody.mass/42;
+
+            state.extraBody.angle = Math.random() * Math.PI * 2;
+            state.extraBody.distance = 100 + Math.random() * 50;
+            state.extraBody.x = state.body.x + Math.cos(state.extraBody.angle) * state.extraBody.distance;
+            state.extraBody.y = state.body.y + Math.sin(state.extraBody.angle) * state.extraBody.distance;
+            
+            tempVelocity = state.gravity * (state.extraBody.mass + state.body.mass) / Math.pow(state.extraBody.distance, 1.1);
+            state.extraBody.velX = tempVelocity * Math.sin(state.extraBody.angle);
+            state.extraBody.velY = tempVelocity * Math.cos(state.extraBody.angle);;
+            
+            if (state.difficulty > 3)
+            {
+              state.requiredOrbits = state.difficulty;
+            }
+          }
+          state.gameInitialized = true;
+        }
         const ship = state.ship;
         const body = state.body;
+        const extraBody = state.extraBody;
         
         // Calculate distance to body
         const dx = body.x - ship.x;
         const dy = body.y - ship.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const currentAngle = Math.atan2(dy, dx);
+
+        if (state.difficulty > 2)
+        {
+          extradx = extraBody.x - body.x;
+          extrady = extraBody.y - body.y;
+          shipExtradx = extraBody.x - ship.x;
+          shipExtrady = extraBody.y - ship.y;
+          extraBody.distance = Math.sqrt(extradx * extradx + extrady * extrady);
+          extraBody.shipDistance = Math.sqrt(shipExtradx * shipExtradx + shipExtrady * shipExtrady);
+          extraBody.angle = Math.atan2(dy, dx);
+        }
         
         // Check for collision with body
-        if (distance < body.radius + ship.height) {
+        if (distance < body.radius + ship.height || extraBody.shipDistance < extraBody.radius + ship.height) {
           explode();
           return;
         }
@@ -168,6 +220,19 @@
         
         ship.velX += Math.cos(angleToBody) * force / ship.mass;
         ship.velY += Math.sin(angleToBody) * force / ship.mass;
+
+        if (state.difficulty > 2)
+        {
+          extraBodyShipForce = state.gravity * extraBody.mass * ship.mass / (extraBody.shipDistance * extraBody.shipDistance);
+          extraBodyAngleToShip = Math.atan2(shipExtrady, shipExtradx);
+          ship.velX += Math.cos(extraBodyAngleToShip) * extraBodyShipForce / ship.mass;
+          ship.velY += Math.sin(extraBodyAngleToShip) * extraBodyShipForce / ship.mass;
+
+          extraBodyBodyForce = state.gravity * extraBody.mass * body.mass / (extraBody.distance * extraBody.distance);
+          extraBodyAngleToBody = Math.atan2(extrady, extradx);
+          extraBody.velX -= Math.cos(extraBodyAngleToBody) * extraBodyBodyForce / extraBody.mass;
+          extraBody.velY -= Math.sin(extraBodyAngleToBody) * extraBodyBodyForce / extraBody.mass;
+        }
         
         // Orbit tracking
         // Calculate angle difference
@@ -192,7 +257,7 @@
         }
         
         checkOrbits();
-        if (state.ship.orbits >= 3) state.successDelay--;
+        if (state.ship.orbits >= state.requiredOrbits) state.successDelay--;
 
         state.ship.lastAngleToBody = currentAngle;
 
@@ -213,6 +278,9 @@
         // Update position
         ship.x += ship.velX;
         ship.y += ship.velY;
+
+        extraBody.x += extraBody.velX;
+        extraBody.y += extraBody.velY;
       }
 
       // Handle ship explosion
@@ -232,7 +300,16 @@
         ctx.arc(state.body.x, state.body.y, state.body.radius, 0, Math.PI * 2);
         ctx.fillStyle = state.body.color;
         ctx.fill();
-        
+
+        // Draw extra body
+        if (state.difficulty > 2)
+        {
+          ctx.beginPath();
+          ctx.arc(state.extraBody.x, state.extraBody.y, state.extraBody.radius, 0, Math.PI * 2);
+          ctx.fillStyle = state.extraBody.color;
+          ctx.fill();
+        }
+
         renderParticles();
 
         // Draw ship if not exploding
@@ -267,15 +344,15 @@
         // Draw orbit counter
         ctx.textAlign = 'left';
         ctx.font = '16px Arial';
-        if (state.ship.orbits >= 3)
+        if (state.ship.orbits >= state.requiredOrbits)
         {
           ctx.fillStyle = '#0F0';
-          ctx.fillText(`Orbits: ${state.ship.orbits}/3   SUCCESS`, 10, 25);
+          ctx.fillText(`Orbits: ${state.ship.orbits}/${state.requiredOrbits}   SUCCESS`, 10, 25);
         }
         else
         {
           ctx.fillStyle = '#FFF';
-          ctx.fillText(`Orbits: ${state.ship.orbits}/3`, 10, 25);
+          ctx.fillText(`Orbits: ${state.ship.orbits}/${state.requiredOrbits}`, 10, 25);
         }
       }
 
