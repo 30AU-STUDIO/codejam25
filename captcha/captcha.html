@@ -48,7 +48,7 @@
       // Game state
       const state = {
         body: { x: 195, y: 150, radius: 24, mass: 1000, color: '#FF0' },
-        extraBody: { x: -100, y: -100, velX: 0, velY: 0, radius: 16, mass: 500, color: '#AA0' },
+        extraBody: { x: -100, y: -100, velX: 0, velY: 0, radius: 16, mass: 500, color: '#FF0' },
         ship: {
           x: 0, y: 0, 
           width: 15, height: 10,
@@ -62,14 +62,16 @@
           orbits: 0,
         },
         particles: [],
+        explosionDebris: [],
+        explosionFrame: 0,
         target: { x: 0, y: 0 },
         gameInitialized: false,
         exploding: false,
         thrusting: false,
-        thrustPower: 0.05,
-        gravity: 0.2,
+        thrustPower: 0.07,
+        gravity: 0.25,
         requiredOrbits: 3,
-        difficulty: 3, // valid values: 1 to 3. anything over 3 just adds to required # orbits.
+        difficulty: 3, // valid values: 1 and up. anything over 3 just adds to required # orbits. 1 and 2 don't have an extra orbiting body.
         successDelay: 60
       };
 
@@ -133,6 +135,19 @@
         });
       }
 
+      function updateExplosion() {
+        if (!state.exploding) return;
+        
+        state.explosionFrame++;
+        
+        // Update debris positions
+        state.explosionDebris.forEach(d => {
+          d.x += d.vx;
+          d.y += d.vy;
+          d.rotation += d.rotationSpeed;
+        });
+      }
+
       // Main game loop
       function gameLoop() {
         update();
@@ -142,7 +157,12 @@
 
       // Update game state
       function update() {
-        if (state.exploding) return;
+        if (state.exploding)
+        {
+          updateExplosion();
+          updateParticles();
+          return;
+        } 
         
         if (!state.gameInitialized)
         {
@@ -156,23 +176,45 @@
             state.body.mass = 600 + Math.random()*1000;
             state.body.radius = state.body.mass/42;
           }
-          else if (state.difficulty == 3)
+          else if (state.difficulty >= 3)
           {
-            state.body.mass = 600 + Math.random()*1000;
+            state.body.mass = 900 + Math.random()*800;
             state.body.radius = state.body.mass/42;
 
             state.extraBody.mass = 300 + Math.random()*500;
             state.extraBody.radius = state.extraBody.mass/42;
+            
+            extraSpawnRand = Math.random();
 
-            state.extraBody.angle = Math.random() * Math.PI * 2;
-            state.extraBody.distance = 100 + Math.random() * 50;
-            state.extraBody.x = state.body.x + Math.cos(state.extraBody.angle) * state.extraBody.distance;
-            state.extraBody.y = state.body.y + Math.sin(state.extraBody.angle) * state.extraBody.distance;
-            
-            tempVelocity = state.gravity * (state.extraBody.mass + state.body.mass) / Math.pow(state.extraBody.distance, 1.1);
-            state.extraBody.velX = tempVelocity * Math.sin(state.extraBody.angle);
-            state.extraBody.velY = tempVelocity * Math.cos(state.extraBody.angle);;
-            
+            if (extraSpawnRand < 0.25)
+            {
+              state.extraBody.x = 185;
+              state.extraBody.y = -20;  
+              state.extraBody.velX = 1;
+              state.extraBody.velY = 0;
+            }
+            else if (extraSpawnRand < 0.50)
+            {
+              state.extraBody.x = 185;
+              state.extraBody.y = 320;  
+              state.extraBody.velX = 1;
+              state.extraBody.velY = 0;
+            }
+            else if (extraSpawnRand < 0.75)
+            {
+              state.extraBody.x = -20;
+              state.extraBody.y = 150;  
+              state.extraBody.velX = 0;
+              state.extraBody.velY = 1;
+            }
+            else
+            {
+              state.extraBody.x = 410;
+              state.extraBody.y = 150;  
+              state.extraBody.velX = 0;
+              state.extraBody.velY = 1;
+            }
+
             if (state.difficulty > 3)
             {
               state.requiredOrbits = state.difficulty;
@@ -274,6 +316,7 @@
         }
         
         updateParticles();
+        updateExplosion();
 
         // Update position
         ship.x += ship.velX;
@@ -286,8 +329,26 @@
       // Handle ship explosion
       function explode() {
         state.exploding = true;
-        setTimeout(resetShip, 1000);
+        state.explosionFrame = 0;
+        state.explosionDebris = [];
+        
+        // Create explosion debris (4-6 triangles)
+        const debrisCount = 5+ Math.floor(Math.random() * 4);
+        for (let i = 0; i < debrisCount; i++) {
+          state.explosionDebris.push({
+            x: state.ship.x,
+            y: state.ship.y,
+            size: 3 + Math.random() * 4,
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() - 0.5) * 0.2,
+            vx: (Math.random() - 0.5) * 5,
+            vy: (Math.random() - 0.5) * 5,
+            color: state.ship.color
+          });
       }
+  
+  setTimeout(resetShip, 1000);
+}
 
       // Render game
       function render() {
@@ -330,16 +391,39 @@
 
         } else {
           // Draw explosion
-          ctx.beginPath();
-          ctx.arc(state.ship.x, state.ship.y, 30, 0, Math.PI * 2);
-          ctx.fillStyle = '#F00';
-          ctx.fill();
+          if (state.exploding) {
+            const fade = 2 - (state.explosionFrame / 30);
+            if (fade > 0) {
+              ctx.fillStyle = `rgba(255, 255, 255, ${fade})`;
+              ctx.beginPath();
+              ctx.arc(state.ship.x, state.ship.y, 
+                      state.explosionFrame * 3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            
+            // Draw debris triangles
+            state.explosionDebris.forEach(d => {
+              ctx.save();
+              ctx.translate(d.x, d.y);
+              ctx.rotate(d.rotation);
+              
+              ctx.beginPath();
+              ctx.moveTo(d.size, 0);
+              ctx.lineTo(-d.size, -d.size/2);
+              ctx.lineTo(-d.size, d.size/2);
+              ctx.closePath();
+              ctx.fillStyle = d.color;
+              ctx.fill();
+              
+              ctx.restore();
+            });
+          }
         }
 
         // Draw instructions
         ctx.font = '12px Arial';
         ctx.fillStyle = '#FFF';
-        ctx.fillText(`Click or tap to move your ship. Orbit 3 times.`, 10, 300-12);
+        ctx.fillText(`Click or tap to move your ship. Orbit ${state.requiredOrbits} times.`, 10, 300-12);
         
         // Draw orbit counter
         ctx.textAlign = 'left';
