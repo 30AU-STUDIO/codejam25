@@ -20,12 +20,6 @@
       height: 300px;
     }
 
-    #captcha-container2 {
-      width: 390px;
-      margin: 0 auto;
-      text-align: center;
-      font-family: Arial, sans-serif;
-    }
     #gameCanvas {
       background: #000;
       display: block;
@@ -265,10 +259,14 @@
           ctx.fill();
         }
 
-        // Draw orbit counter
-        ctx.font = '16px Arial';
+        // Draw instructions
+        ctx.font = '12px Arial';
         ctx.fillStyle = '#FFF';
+        ctx.fillText(`Click or tap to move your ship. Orbit 3 times.`, 10, 300-12);
+        
+        // Draw orbit counter
         ctx.textAlign = 'left';
+        ctx.font = '16px Arial';
         if (state.ship.orbits >= 3)
         {
           ctx.fillStyle = '#0F0';
@@ -293,9 +291,10 @@
       canvas.addEventListener('touchmove', (e) => {
         if (state.thrusting )
         {
+          e.preventDefault();
           const rect = canvas.getBoundingClientRect();
-          state.target.x = e.clientX - rect.left;
-          state.target.y = e.clientY - rect.top;
+          state.target.x = e.touches[0].clientX - rect.left;
+          state.target.y = e.touches[0].clientY - rect.top;
         }  
       });
       canvas.addEventListener('mousedown', (e) => {
